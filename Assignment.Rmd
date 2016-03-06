@@ -1,0 +1,146 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Carolyn K. Hamm, Ph.D."
+date: "Friday, March 04, 2016"
+output: html_document
+---
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+# Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways (A through E). 
+
+* Class A: Exactly according to the specs
+* Class B: Throwing the elbows to the front
+* Class C: Lifting the dumbbell only halfway
+* Class D: Lowering the dumbbell only halfway
+* Class E: Throwing the hips to the front
+
+For more details on the paper "Qualitative Activity Recognition of Weight Lifting Exercises" see <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+## What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected outcome of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+Load the libraries caret and YaleToolkit, and set the working directory.
+```{r, echo=FALSE}
+library(caret)
+library(YaleToolkit)
+library(lattice)
+setwd("~/Hamm/Coursera/May 2015 Machine Learning")
+```
+
+# Read the training data, and examine the data set.
+
+```{r}
+testingall <- read.csv("pml-testing-Jan.csv", header=TRUE)
+trainingall <- read.csv("pml-training-Jan.csv", header=TRUE)
+str(trainingall)
+summary(trainingall$classe)
+dim(trainingall)
+dim(testingall)
+```
+
+The training dataset has 19622 observations and 160 columns (variables), and 
+the testing dataset has 20 observations with 160 columns.
+
+Since there are many missing values, columns with missing values >= 55% are removed, and 
+columns that are not numeric are removed.  Since the variable "classe" is the classification
+variable, it is added back to the dataset as a factor variable.  The first column in the datasets named "x" is removed since it is a sequence and does not help to classify the dataset.
+
+```{r}
+dat <- trainingall[, colSums(is.na(trainingall)) < nrow(trainingall) * 0.55]
+dat_train <- dat[,sapply(dat, is.numeric)]
+dat_train <- cbind(dat_train,dat$classe)
+colnames(dat_train)[57] <- "classe"
+dat_train <- subset(dat_train, select = -1 )
+dat_test <- testingall[, colSums(is.na(testingall)) < nrow(testingall) * 0.55]
+dat_test <- dat_test[,sapply(dat_test, is.numeric)]
+dat_test <- subset(dat_test, select = -1 )
+
+```
+
+With the reduced dataset, I will partition the data into two sets, one for training and one for testing.  The testing dataset is to calculate the accuracy of the data model.  I use the createDataPartition function in caret, so that 60% of the data in in the training data file and 40% is in the testing data file.  The seed is set at 95014 for reproducibility.  Summary of the classification variable shows how the observations are distributed between the classe variables.
+
+```{r}
+set.seed(95014)
+inTraining <- createDataPartition(dat_train$classe, p = .60, list=FALSE)
+training <- dat_train[inTraining,]
+testing <- dat_train[-inTraining,]
+summary(training$classe)
+summary(testing$classe)
+```
+
+The data is now centered and scaled so that the mean and variance are normalized for the numeric data used to create the model.  The same method (preObj) created for the training data set is applied to the test dataset for all but the classification variable.  Running summary(trainProcess) shows that the means of all the numerical variables are 0.00.
+
+
+```{r}
+preObj <- preProcess(training[,-56],method=c("center","scale"))
+trainProcess <- predict(preObj,training[,-56])
+trainProcess[,"classe"] <- training$classe
+testProcess <- predict(preObj,testing[,-56])
+testProcess[,"classe"] <- testing$classe
+test20Process <- predict(preObj,dat_test[,-56])
+
+```
+
+# Visualize the data. 
+
+Histograms show how individual variables are distributed.
+
+
+```{r}
+hist(trainProcess$total_accel_forearm, prob=T)
+
+```
+
+Box-Whisker plots show how individual variables are related to factor variables.  
+
+```{r}
+print(bwplot(classe ~ total_accel_forearm, data=trainProcess))
+
+```
+
+
+Pair-wise scatterplots of the variables shows which are correlated.  
+
+```{r}
+pairdat <- subset(trainProcess,select=1:5)
+splom(pairdat, panel = panel.smoothScatter, raster = TRUE)
+
+```
+
+# Build the model.
+
+Now, after the data has been reduced, normalized and scaled, I will build the model using the random forest method.  The R code is commented out since I don't want to tie up my computer for 5 hours.
+
+A single classification tree give a model with high variance.  Two methods to reduce variance are bagging and random forest.  Random forest was used to reduce variance by repeatedly creating decision trees using a small subset of predictor variables.  Using this method is a way of applying cross validation in order to improve accuracy of the model.
+
+```{r}
+# rfFit <- train(classe ~.,data=trainProcess, method="rf",prox=TRUE)
+
+```
+Once the model rfFit is built, the prediction rfFit.pred is calculated, and applied to the normalized, scaled test dataset testProcess.  The table shows the correct responses on the diagonal, and summing these, dividing by the total number of observations in the test dataset 7846 results in a 99.94% accuracy rate.  
+
+```{r}
+rfFit.pred <- predict(rfFit,testProcess)
+rfFit.table <- table(rfFit.pred,testProcess$classe)
+rfFit.table
+(sum(diag(rfFit.table)))/7846
+
+```
+
+# Predictions.
+
+Applying the model to the testing set with 20 observations, resulted in 100% correct responses on the Assignment.
+
+```{r}
+predictions <- predict(rfFit,newdata=test20Process)
+predictions
+
+```
+
+# Summary
+
+The paper "Qualitative Activity Recognition of Weight Lifting Exercises" used the approach of Random Forest due to the characteristic noise in sensor data. I used Random Forest based on the results from this paper. The authors found that the overall recognition performance was 98.03%, with individual accuracies by class of A 97.6%, B 97.3%, C 98.2%, D 98.1% and E 99.1%.  These high accuracies reflect the 99.94% accuracy rate found using the model on a subset of 60% of data, and tested on the remaining 40%.  Cross-validation was not necessary since I used the Random Forest algorithm.  The 20 different test cases were predicted with 100% accuracy.
